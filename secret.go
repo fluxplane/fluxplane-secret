@@ -199,6 +199,47 @@ type Descriptor struct {
 	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 }
 
+// WireMaterial is a trusted host/plugin-process transport DTO. It is not safe
+// for model-visible surfaces or logs.
+type WireMaterial struct {
+	Kind    Kind   `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Value   string `json:"value" yaml:"value"`
+	Source  string `json:"source,omitempty" yaml:"source,omitempty"`
+	Purpose string `json:"purpose,omitempty" yaml:"purpose,omitempty"`
+	Ref     Ref    `json:"ref,omitempty" yaml:"ref,omitempty"`
+}
+
+// Material converts the trusted wire shape to shared secret material.
+func (m WireMaterial) Material() Material {
+	return Material{Ref: m.Ref.Normalize(), Kind: m.Kind, Value: []byte(m.Value)}
+}
+
+// WireMaterialFromMaterial converts trusted material to the wire DTO.
+func WireMaterialFromMaterial(m Material) WireMaterial {
+	return WireMaterial{Kind: m.Kind, Value: string(m.Value), Ref: m.Ref.Normalize()}
+}
+
+// CapabilityGrant allows one host capability while a secret access grant is valid.
+type CapabilityGrant struct {
+	Name     string `json:"name" yaml:"name"`
+	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Action   string `json:"action,omitempty" yaml:"action,omitempty"`
+}
+
+// AccessGrant authorizes a plugin instance to resolve selected secret purposes
+// for a short period. It carries no secret material.
+type AccessGrant struct {
+	Token        string              `json:"token" yaml:"token"`
+	Plugin       string              `json:"plugin" yaml:"plugin"`
+	Instance     string              `json:"instance" yaml:"instance"`
+	Operations   []string            `json:"operations,omitempty" yaml:"operations,omitempty"`
+	Capabilities []CapabilityGrant   `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	Purposes     []string            `json:"purposes,omitempty" yaml:"purposes,omitempty"`
+	PurposeEnv   map[string][]string `json:"purpose_env,omitempty" yaml:"purpose_env,omitempty"`
+	ExpiresAt    time.Time           `json:"expires_at" yaml:"expires_at"`
+	CreatedAt    time.Time           `json:"created_at" yaml:"created_at"`
+}
+
 // Material is resolved secret material available only to trusted runtime code.
 // Hosts should keep Value out of model-visible surfaces and logs.
 type Material struct {
@@ -206,6 +247,20 @@ type Material struct {
 	Kind      Kind   `json:"kind,omitempty" yaml:"kind,omitempty"`
 	Value     []byte `json:"-" yaml:"-"`
 	MediaType string `json:"media_type,omitempty" yaml:"media_type,omitempty"`
+}
+
+// String returns Value as a string for trusted runtime code.
+func (m Material) String() string { return string(m.Value) }
+
+// Empty reports whether material has no non-whitespace value.
+func (m Material) Empty() bool { return strings.TrimSpace(string(m.Value)) == "" }
+
+// Redacted returns a stable non-secret marker for present/absent material.
+func (m Material) Redacted() string {
+	if m.Empty() {
+		return ""
+	}
+	return "<redacted>"
 }
 
 // StoredSecret is persisted secret material plus non-sensitive metadata. Value is
